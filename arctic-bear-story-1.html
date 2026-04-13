@@ -152,16 +152,33 @@
     letter-spacing: 0.04em;
   }
 
-  /* Highlighted word during speech */
   .word-span {
     border-radius: 4px;
     transition: background 0.1s, color 0.1s;
     padding: 0 1px;
+    cursor: pointer;
+  }
+  .word-span:hover {
+    background: rgba(79,195,247,0.15);
   }
   .word-span.speaking {
     background: rgba(79, 195, 247, 0.35);
     color: #fff;
     box-shadow: 0 0 0 2px rgba(79,195,247,0.4);
+  }
+
+  .btn-loop {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+    padding: 10px 18px;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .btn-loop:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .btn-loop.active {
+    background: rgba(79,195,247,0.2);
+    color: #4fc3f7;
+    border-color: rgba(79,195,247,0.5);
   }
 
   /* ── Controls ── */
@@ -396,6 +413,7 @@
         <span id="playLabel">開始朗讀</span>
       </button>
       <button class="btn btn-stop" id="btnStop" onclick="stopStory()">■ 停止</button>
+      <button class="btn btn-loop" id="btnLoop" onclick="toggleLoop()">🔁 循環</button>
     </div>
 
     <div class="speed-row">
@@ -522,10 +540,13 @@ const STORY = `大家好，
 let utterance = null;
 let speaking = false;
 let paused = false;
+let looping = false;
 let currentRate = 0.9;
 let wordSpans = [];
 let currentWordIndex = 0;
 let totalWords = 0;
+// charOffset array: maps span index → absolute char position in STORY
+let spanToChar = [];
 
 // ── Init ──
 function init() {
@@ -539,113 +560,108 @@ function init() {
 
 function renderStoryText() {
   const container = document.getElementById('storyText');
-  // Split story into words/segments preserving whitespace
   const text = STORY;
-  // Split by Chinese characters and punctuation to make segments
-  const segments = text.split(/(\s+|(?<=[^\s])(?=[^\s]))/g).filter(s => s !== '');
-  
-  // Better approach: split into chars but group by words
-  // For Chinese, each char can be a "word" unit, but let's chunk by short segments
   const lines = text.split('\n');
   let html = '';
-  let idx = 0;
-  
+  let spanIdx = 0;
+  let absoluteChar = 0;
+  spanToChar = [];
+
   lines.forEach((line, li) => {
     if (line.trim() === '') {
       html += '\n';
+      absoluteChar += 1; // newline char
       return;
     }
-    // Split each line into individual characters (for highlighting)
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      html += `<span class="word-span" data-idx="${idx}">${ch}</span>`;
-      idx++;
+      spanToChar[spanIdx] = absoluteChar;
+      html += `<span class="word-span" data-idx="${spanIdx}" data-char="${absoluteChar}">${ch}</span>`;
+      spanIdx++;
+      absoluteChar++;
     }
-    if (li < lines.length - 1) html += '\n';
+    if (li < lines.length - 1) {
+      html += '\n';
+      absoluteChar += 1;
+    }
   });
-  
+
   container.innerHTML = html;
   wordSpans = container.querySelectorAll('.word-span');
   totalWords = wordSpans.length;
+
+  // Click-to-seek: tap any character to start reading from there
+  wordSpans.forEach(span => {
+    span.addEventListener('click', () => {
+      const idx = parseInt(span.dataset.idx);
+      startReading(idx);
+    });
+  });
+
+  // Touch drag to scrub (mobile swipe along text → seek)
+  let dragActive = false;
+  container.addEventListener('touchstart', () => { dragActive = true; }, { passive: true });
+  container.addEventListener('touchend',   () => { dragActive = false; });
+  container.addEventListener('touchmove', (e) => {
+    if (!dragActive) return;
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (el && el.classList.contains('word-span') && (speaking || paused)) {
+      const idx = parseInt(el.dataset.idx);
+      if (idx !== currentWordIndex) startReading(idx);
+    }
+  }, { passive: true });
 }
 
 // ── TTS ──
-function buildUtterance(fromIndex) {
-  // Get text from index onwards
-  const allText = STORY;
-  // Map char index back to original text position
-  let charPos = 0;
-  let displayIdx = 0;
-  
-  // Find which position in the full text corresponds to fromIndex in wordSpans
-  const lines = allText.split('\n');
-  let textForSpeech = allText;
-  let charOffset = 0;
-  
-  if (fromIndex > 0 && fromIndex < wordSpans.length) {
-    // Count characters up to fromIndex
-    let count = 0;
-    for (let li = 0; li < lines.length; li++) {
-      const line = lines[li];
-      if (count + line.length >= fromIndex) {
-        charOffset += (fromIndex - count);
-        break;
-      }
-      count += line.length;
-      charOffset += line.length + 1; // +1 for newline
-    }
-    textForSpeech = allText.substring(charOffset);
-  }
-  
+function buildUtterance(fromSpanIdx) {
+  const charOffset = spanToChar[fromSpanIdx] || 0;
+  const textForSpeech = STORY.substring(charOffset);
+
   const utt = new SpeechSynthesisUtterance(textForSpeech);
   utt.lang = 'zh-TW';
   utt.rate = currentRate;
   utt.pitch = 1.05;
   utt.volume = 1;
 
-  // Try to pick a Taiwanese voice
   const voices = window.speechSynthesis.getVoices();
-  const twVoice = voices.find(v => v.lang === 'zh-TW') 
+  const twVoice = voices.find(v => v.lang === 'zh-TW')
                || voices.find(v => v.lang.startsWith('zh'))
                || null;
   if (twVoice) utt.voice = twVoice;
 
   utt.onboundary = (e) => {
-    if (e.name === 'word' || e.name === 'sentence') {
-      // Estimate character index
-      const charInSpeech = e.charIndex;
-      const absoluteChar = charOffset + charInSpeech;
-      
-      // Map absolute char position to span index
-      let count = 0;
-      let spanIdx = 0;
-      for (let li = 0; li < lines.length; li++) {
-        if (count + lines[li].length > absoluteChar) {
-          spanIdx = count + (absoluteChar - count);
-          break;
-        }
-        count += lines[li].length + 1;
-        spanIdx = count;
-      }
-      
-      highlightWord(Math.min(spanIdx, totalWords - 1));
-      updateProgress(spanIdx);
+    if (e.name !== 'word' && e.name !== 'sentence') return;
+    const absoluteChar = charOffset + e.charIndex;
+    // Binary search for nearest span
+    let lo = fromSpanIdx, hi = totalWords - 1, best = fromSpanIdx;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (spanToChar[mid] <= absoluteChar) { best = mid; lo = mid + 1; }
+      else hi = mid - 1;
     }
+    highlightWord(best);
+    updateProgress(best);
   };
 
   utt.onend = () => {
     speaking = false;
     paused = false;
-    setPlayState(false);
-    clearHighlight();
-    updateProgress(totalWords);
-    setStatus('朗讀完畢 ✓');
+    if (looping) {
+      // brief pause then restart from beginning
+      setStatus('循環播放中… 🔁', true);
+      setTimeout(() => startReading(0), 600);
+    } else {
+      setPlayState(false);
+      clearHighlight();
+      updateProgress(totalWords);
+      setStatus('朗讀完畢 ✓');
+    }
   };
 
   utt.onerror = (e) => {
     if (e.error !== 'interrupted' && e.error !== 'canceled') {
-      speaking = false;
-      paused = false;
+      speaking = false; paused = false;
       setPlayState(false);
       setStatus('朗讀發生錯誤');
     }
@@ -655,14 +671,11 @@ function buildUtterance(fromIndex) {
 }
 
 function highlightWord(idx) {
-  // Clear previous
-  if (currentWordIndex >= 0 && currentWordIndex < wordSpans.length) {
+  if (currentWordIndex >= 0 && currentWordIndex < wordSpans.length)
     wordSpans[currentWordIndex].classList.remove('speaking');
-  }
   currentWordIndex = idx;
   if (idx >= 0 && idx < wordSpans.length) {
     wordSpans[idx].classList.add('speaking');
-    // Scroll into view
     wordSpans[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 }
@@ -685,17 +698,9 @@ function setStatus(msg, active = false) {
 
 function setPlayState(isPlaying) {
   const btn = document.getElementById('btnPlay');
-  const icon = document.getElementById('playIcon');
-  const label = document.getElementById('playLabel');
-  if (isPlaying) {
-    btn.classList.add('playing');
-    icon.textContent = '⏸';
-    label.textContent = '暫停';
-  } else {
-    btn.classList.remove('playing');
-    icon.textContent = '▶';
-    label.textContent = paused ? '繼續' : '開始朗讀';
-  }
+  document.getElementById('playIcon').textContent = isPlaying ? '⏸' : '▶';
+  document.getElementById('playLabel').textContent = isPlaying ? '暫停' : (paused ? '繼續' : '開始朗讀');
+  btn.classList.toggle('playing', isPlaying);
 }
 
 // ── Controls ──
@@ -703,75 +708,66 @@ function togglePlay() {
   if (!window.speechSynthesis) return;
 
   if (speaking && !paused) {
-    // Pause
     window.speechSynthesis.pause();
-    paused = true;
-    speaking = false;
-    setPlayState(false);
-    setStatus('已暫停');
+    paused = true; speaking = false;
+    setPlayState(false); setStatus('已暫停');
     return;
   }
-
   if (paused) {
-    // Resume
     window.speechSynthesis.resume();
-    paused = false;
-    speaking = true;
-    setPlayState(true);
-    setStatus('朗讀中…', true);
+    paused = false; speaking = true;
+    setPlayState(true); setStatus(looping ? '循環播放中… 🔁' : '朗讀中…', true);
     return;
   }
-
-  // Start fresh
-  startReading();
+  startReading(0);
 }
 
-function startReading(fromIndex = 0) {
+function startReading(fromSpanIdx = 0) {
   window.speechSynthesis.cancel();
   clearHighlight();
-  
   setTimeout(() => {
-    utterance = buildUtterance(fromIndex);
+    utterance = buildUtterance(fromSpanIdx);
     window.speechSynthesis.speak(utterance);
-    speaking = true;
-    paused = false;
+    speaking = true; paused = false;
     setPlayState(true);
-    setStatus('朗讀中…', true);
-  }, 100);
+    setStatus(looping ? '循環播放中… 🔁' : '朗讀中…', true);
+  }, 80);
 }
 
 function stopStory() {
   window.speechSynthesis.cancel();
-  speaking = false;
-  paused = false;
-  setPlayState(false);
-  clearHighlight();
-  updateProgress(0);
+  speaking = false; paused = false;
+  setPlayState(false); clearHighlight(); updateProgress(0);
   setStatus('已停止');
 }
 
 function restartStory() {
   stopStory();
-  setTimeout(() => startReading(0), 200);
+  setTimeout(() => startReading(0), 150);
+}
+
+function toggleLoop() {
+  looping = !looping;
+  const btn = document.getElementById('btnLoop');
+  btn.classList.toggle('active', looping);
+  btn.textContent = looping ? '🔁 循環中' : '🔁 循環';
+  if (speaking) setStatus(looping ? '循環播放中… 🔁' : '朗讀中…', true);
 }
 
 function onSpeedChange(val) {
   currentRate = parseFloat(val);
   document.getElementById('speedDisplay').textContent = currentRate.toFixed(2) + '×';
   updateActivePreset();
-
-  // If currently speaking, restart with new speed
   if (speaking || paused) {
     const idx = currentWordIndex;
     window.speechSynthesis.cancel();
     setTimeout(() => {
       utterance = buildUtterance(idx);
       window.speechSynthesis.speak(utterance);
-      speaking = true;
-      paused = false;
+      speaking = true; paused = false;
       setPlayState(true);
-      setStatus('朗讀中…', true);
-    }, 100);
+      setStatus(looping ? '循環播放中… 🔁' : '朗讀中…', true);
+    }, 80);
   }
 }
 
@@ -784,13 +780,9 @@ function setSpeed(val) {
 }
 
 function updateActivePreset() {
-  document.querySelectorAll('.speed-preset').forEach(btn => {
-    btn.classList.remove('active');
-  });
   const speeds = [0.7, 0.9, 1.15, 1.4];
-  const labels = document.querySelectorAll('.speed-preset');
-  speeds.forEach((s, i) => {
-    if (Math.abs(s - currentRate) < 0.05) labels[i].classList.add('active');
+  document.querySelectorAll('.speed-preset').forEach((btn, i) => {
+    btn.classList.toggle('active', Math.abs(speeds[i] - currentRate) < 0.05);
   });
 }
 
@@ -810,16 +802,13 @@ function createSnowflakes() {
   }
 }
 
-// Load voices (some browsers need this)
 if (window.speechSynthesis) {
   window.speechSynthesis.onvoiceschanged = () => {};
 }
 
-// Warn if page hidden (some browsers pause TTS)
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden && speaking) {
+  if (document.hidden && speaking)
     setStatus('視窗背景中，部分瀏覽器可能暫停語音', true);
-  }
 });
 
 init();

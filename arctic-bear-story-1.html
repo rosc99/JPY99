@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小北極熊找媽媽</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700;900&family=Noto+Sans+TC:wght@300;400;500&display=swap');
+
+  :root {
+    --ice: #e8f4fd;
+    --deep-ice: #b8dcf0;
+    --ocean: #1a4a6e;
+    --ocean-dark: #0d2d45;
+    --aurora1: #7ec8e3;
+    --aurora2: #a8d8ea;
+    --snow: #f0f8ff;
+    --gold: #f7c59f;
+    --warm: #e8945a;
+    --text: #0d2d45;
+    --highlight: #2980b9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Serif TC', serif;
+    background: var(--ocean-dark);
+    color: var(--snow);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* ── Aurora Background ── */
+  .aurora-bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+  }
+  .aurora-layer {
+    position: absolute;
+    width: 200%;
+    height: 60%;
+    top: -10%;
+    left: -50%;
+    border-radius: 50%;
+    opacity: 0.18;
+    filter: blur(60px);
+    animation: auroraFloat 12s ease-in-out infinite alternate;
+  }
+  .aurora-layer:nth-child(1) { background: radial-gradient(ellipse, #4fc3f7, transparent 60%); animation-delay: 0s; }
+  .aurora-layer:nth-child(2) { background: radial-gradient(ellipse, #81d4fa, transparent 55%); animation-delay: -4s; top: 5%; }
+  .aurora-layer:nth-child(3) { background: radial-gradient(ellipse, #b3e5fc, transparent 50%); animation-delay: -8s; top: -5%; }
+
+  @keyframes auroraFloat {
+    from { transform: translateX(0) scaleY(1); }
+    to   { transform: translateX(8%) scaleY(1.15); }
+  }
+
+  /* Snowflakes */
+  .snowflake {
+    position: fixed;
+    top: -20px;
+    color: rgba(255,255,255,0.6);
+    font-size: 1.2em;
+    animation: snowFall linear infinite;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+  }
+  @keyframes snowFall {
+    to { transform: translateY(110vh) rotate(360deg); }
+  }
+
+  /* ── Layout ── */
+  .wrapper {
+    position: relative;
+    z-index: 2;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 20px 20px 120px;
+  }
+
+  /* ── Header ── */
+  .header {
+    text-align: center;
+    padding: 40px 0 30px;
+    animation: fadeDown 0.8s ease both;
+  }
+  .bear-icon {
+    font-size: 4rem;
+    display: block;
+    margin-bottom: 12px;
+    animation: bearFloat 4s ease-in-out infinite;
+    filter: drop-shadow(0 4px 20px rgba(120,200,240,0.4));
+  }
+  @keyframes bearFloat {
+    0%,100% { transform: translateY(0); }
+    50%      { transform: translateY(-10px); }
+  }
+  .title {
+    font-size: clamp(1.8rem, 5vw, 2.8rem);
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    background: linear-gradient(135deg, #ffffff 0%, #b3e5fc 50%, #4fc3f7 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    line-height: 1.3;
+  }
+  .subtitle {
+    margin-top: 10px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.85rem;
+    color: rgba(255,255,255,0.45);
+    letter-spacing: 0.15em;
+    font-weight: 300;
+  }
+
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Story Text ── */
+  .story-box {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(180,220,255,0.15);
+    border-radius: 20px;
+    padding: 32px 28px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+    margin-bottom: 24px;
+    animation: fadeUp 0.8s ease 0.2s both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .story-text {
+    font-size: clamp(1.05rem, 2.5vw, 1.22rem);
+    line-height: 2.1;
+    color: rgba(240, 248, 255, 0.92);
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-weight: 400;
+    letter-spacing: 0.04em;
+  }
+
+  /* Highlighted word during speech */
+  .word-span {
+    border-radius: 4px;
+    transition: background 0.1s, color 0.1s;
+    padding: 0 1px;
+  }
+  .word-span.speaking {
+    background: rgba(79, 195, 247, 0.35);
+    color: #fff;
+    box-shadow: 0 0 0 2px rgba(79,195,247,0.4);
+  }
+
+  /* ── Controls ── */
+  .controls {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(10, 25, 45, 0.92);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(100,180,240,0.18);
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+    padding: 14px 20px 18px;
+  }
+  .controls-inner {
+    max-width: 760px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Progress bar */
+  .progress-bar-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4fc3f7, #81d4fa);
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s linear;
+  }
+
+  /* Buttons row */
+  .btn-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .btn {
+    border: none;
+    cursor: pointer;
+    border-radius: 50px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-weight: 500;
+    transition: all 0.18s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    outline: none;
+  }
+  .btn:active { transform: scale(0.94); }
+
+  .btn-play {
+    background: linear-gradient(135deg, #4fc3f7, #0288d1);
+    color: #fff;
+    font-size: 1.05rem;
+    padding: 12px 30px;
+    box-shadow: 0 4px 20px rgba(79,195,247,0.4);
+    letter-spacing: 0.05em;
+    min-width: 120px;
+    justify-content: center;
+  }
+  .btn-play:hover { background: linear-gradient(135deg, #81d4fa, #0288d1); box-shadow: 0 6px 25px rgba(79,195,247,0.6); }
+  .btn-play.playing { background: linear-gradient(135deg, #ffb74d, #f57c00); box-shadow: 0 4px 20px rgba(255,183,77,0.4); }
+
+  .btn-stop {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+    padding: 10px 18px;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .btn-stop:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+  .btn-restart {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.7);
+    font-size: 0.9rem;
+    padding: 10px 18px;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .btn-restart:hover { background: rgba(255,255,255,0.12); color: #fff; }
+
+  /* Speed row */
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    justify-content: center;
+  }
+  .speed-label {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.78rem;
+    color: rgba(255,255,255,0.4);
+    letter-spacing: 0.1em;
+    min-width: 36px;
+    text-align: right;
+  }
+  .speed-value {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.82rem;
+    color: #4fc3f7;
+    min-width: 36px;
+    text-align: left;
+    font-weight: 500;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 160px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.15);
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4fc3f7, #0288d1);
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(79,195,247,0.6);
+    transition: transform 0.15s;
+  }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.25); }
+
+  /* Speed presets */
+  .speed-presets {
+    display: flex;
+    gap: 5px;
+  }
+  .speed-preset {
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.72rem;
+    padding: 4px 9px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .speed-preset:hover { background: rgba(79,195,247,0.15); color: #4fc3f7; border-color: rgba(79,195,247,0.3); }
+  .speed-preset.active { background: rgba(79,195,247,0.2); color: #4fc3f7; border-color: rgba(79,195,247,0.5); }
+
+  /* Status */
+  .status-row {
+    text-align: center;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.08em;
+    min-height: 16px;
+  }
+  .status-row.active { color: rgba(79,195,247,0.7); }
+
+  /* No TTS warning */
+  .no-tts {
+    background: rgba(255,183,77,0.12);
+    border: 1px solid rgba(255,183,77,0.3);
+    color: rgba(255,183,77,0.9);
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 0.82rem;
+    text-align: center;
+    display: none;
+  }
+
+  /* Ice deco */
+  .ice-deco {
+    text-align: center;
+    font-size: 1.8rem;
+    opacity: 0.3;
+    margin: 20px 0;
+    letter-spacing: 0.5em;
+  }
+</style>
+</head>
+<body>
+
+<div class="aurora-bg">
+  <div class="aurora-layer"></div>
+  <div class="aurora-layer"></div>
+  <div class="aurora-layer"></div>
+</div>
+
+<div class="wrapper">
+  <header class="header">
+    <span class="bear-icon">🐻‍❄️</span>
+    <h1 class="title">小北極熊找媽媽</h1>
+    <p class="subtitle">說故事比賽 · 朗讀版</p>
+  </header>
+
+  <div class="no-tts" id="noTts">
+    ⚠️ 您的瀏覽器不支援語音朗讀，請使用 Chrome、Edge 或 Safari。
+  </div>
+
+  <div class="story-box">
+    <div class="story-text" id="storyText"></div>
+  </div>
+
+  <div class="ice-deco">❄ ❄ ❄</div>
+</div>
+
+<!-- Fixed Controls -->
+<div class="controls">
+  <div class="controls-inner">
+    <div class="progress-bar-track" id="progressTrack">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-restart" id="btnRestart" onclick="restartStory()">↩ 重頭</button>
+      <button class="btn btn-play" id="btnPlay" onclick="togglePlay()">
+        <span id="playIcon">▶</span>
+        <span id="playLabel">開始朗讀</span>
+      </button>
+      <button class="btn btn-stop" id="btnStop" onclick="stopStory()">■ 停止</button>
+    </div>
+
+    <div class="speed-row">
+      <span class="speed-label">速度</span>
+      <input type="range" id="speedSlider" min="0.5" max="1.8" step="0.05" value="0.9" oninput="onSpeedChange(this.value)">
+      <span class="speed-value" id="speedDisplay">0.9×</span>
+      <div class="speed-presets">
+        <button class="speed-preset" onclick="setSpeed(0.7)">慢</button>
+        <button class="speed-preset active" onclick="setSpeed(0.9)">正常</button>
+        <button class="speed-preset" onclick="setSpeed(1.15)">稍快</button>
+        <button class="speed-preset" onclick="setSpeed(1.4)">快</button>
+      </div>
+    </div>
+
+    <div class="status-row" id="statusRow">準備朗讀中…</div>
+  </div>
+</div>
+
+<script>
+// ── Story content ──
+const STORY = `大家好，
+我今天要講的故事是 《小北極熊找媽媽》。
+
+在很冷很冷的北極，
+住著一隻小北極熊和牠的媽媽。
+牠們住在白白的冰山上，
+每天都生活在一起。
+
+有一天，
+小北極熊和媽媽站在冰山上。
+小北極熊覺得很奇怪，
+因為天氣好像沒有以前那麼冷了。
+牠低頭一看，發現冰山上的冰，
+竟然慢慢在融化。
+
+小北極熊問媽媽：
+「媽媽，冰山怎麼了？」
+
+媽媽說：
+「因為天氣變熱了，
+冰山正在慢慢融化。」
+
+小北極熊還來不及多想，
+突然聽到「喀啦」一聲！
+冰山裂開了！
+
+小北極熊嚇了一大跳，
+大聲喊：「媽媽！媽媽！」
+
+可是冰塊越漂越遠，
+小北極熊和媽媽被分開了。
+小北極熊站在小小的浮冰上，
+又害怕、又難過。
+
+牠一直大聲叫：
+「媽媽！你在哪裡？」
+「媽媽！我好害怕！」
+
+海風吹呀吹，
+海水晃呀晃，
+小北極熊冷得發抖，
+也傷心得快哭了。
+
+牠心裡想：
+如果我找不到媽媽，怎麼辦？
+如果冰山一直融化，我們的家怎麼辦？
+
+小北極熊坐在小小的浮冰上，
+看著四周的冰越來越少，
+心裡好難過。
+牠終於知道，
+原來冰山融化，
+不只是冰變小了，
+連北極熊的家也可能不見了。
+
+過了一會兒，
+浮冰慢慢漂啊漂。
+忽然，小北極熊看到遠遠的地方，
+有一個很熟悉的身影。
+
+牠仔細一看，
+啊！是媽媽！
+
+小北極熊開心地大叫：
+「媽媽！媽媽！我在這裡！」
+
+媽媽也看到牠了，
+大聲回答：
+「孩子，別怕，媽媽在這裡！」
+
+兩塊浮冰慢慢靠近，
+越來越近，越來越近。
+最後，小北極熊終於回到媽媽身邊。
+
+牠馬上抱住媽媽說：
+「媽媽，我好想你！」
+
+媽媽也抱著牠說：
+「孩子，不怕，媽媽也一直在找你。」
+
+小北極熊回到媽媽身邊，
+雖然很開心，
+可是牠看著融化的冰山，
+還是很擔心。
+
+這個故事讓我知道，
+如果地球越來越熱，
+冰山就會一直融化，
+北極熊和很多動物，
+都可能沒有家。
+
+所以我們要愛護地球，
+不要浪費水，
+不要浪費電，
+也要一起保護環境。
+
+希望小北極熊和媽媽，
+可以一直住在牠們的家。
+
+我的故事講完了，
+謝謝大家。`;
+
+// ── State ──
+let utterance = null;
+let speaking = false;
+let paused = false;
+let currentRate = 0.9;
+let wordSpans = [];
+let currentWordIndex = 0;
+let totalWords = 0;
+
+// ── Init ──
+function init() {
+  if (!window.speechSynthesis) {
+    document.getElementById('noTts').style.display = 'block';
+    return;
+  }
+  renderStoryText();
+  createSnowflakes();
+}
+
+function renderStoryText() {
+  const container = document.getElementById('storyText');
+  // Split story into words/segments preserving whitespace
+  const text = STORY;
+  // Split by Chinese characters and punctuation to make segments
+  const segments = text.split(/(\s+|(?<=[^\s])(?=[^\s]))/g).filter(s => s !== '');
+  
+  // Better approach: split into chars but group by words
+  // For Chinese, each char can be a "word" unit, but let's chunk by short segments
+  const lines = text.split('\n');
+  let html = '';
+  let idx = 0;
+  
+  lines.forEach((line, li) => {
+    if (line.trim() === '') {
+      html += '\n';
+      return;
+    }
+    // Split each line into individual characters (for highlighting)
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      html += `<span class="word-span" data-idx="${idx}">${ch}</span>`;
+      idx++;
+    }
+    if (li < lines.length - 1) html += '\n';
+  });
+  
+  container.innerHTML = html;
+  wordSpans = container.querySelectorAll('.word-span');
+  totalWords = wordSpans.length;
+}
+
+// ── TTS ──
+function buildUtterance(fromIndex) {
+  // Get text from index onwards
+  const allText = STORY;
+  // Map char index back to original text position
+  let charPos = 0;
+  let displayIdx = 0;
+  
+  // Find which position in the full text corresponds to fromIndex in wordSpans
+  const lines = allText.split('\n');
+  let textForSpeech = allText;
+  let charOffset = 0;
+  
+  if (fromIndex > 0 && fromIndex < wordSpans.length) {
+    // Count characters up to fromIndex
+    let count = 0;
+    for (let li = 0; li < lines.length; li++) {
+      const line = lines[li];
+      if (count + line.length >= fromIndex) {
+        charOffset += (fromIndex - count);
+        break;
+      }
+      count += line.length;
+      charOffset += line.length + 1; // +1 for newline
+    }
+    textForSpeech = allText.substring(charOffset);
+  }
+  
+  const utt = new SpeechSynthesisUtterance(textForSpeech);
+  utt.lang = 'zh-TW';
+  utt.rate = currentRate;
+  utt.pitch = 1.05;
+  utt.volume = 1;
+
+  // Try to pick a Taiwanese voice
+  const voices = window.speechSynthesis.getVoices();
+  const twVoice = voices.find(v => v.lang === 'zh-TW') 
+               || voices.find(v => v.lang.startsWith('zh'))
+               || null;
+  if (twVoice) utt.voice = twVoice;
+
+  utt.onboundary = (e) => {
+    if (e.name === 'word' || e.name === 'sentence') {
+      // Estimate character index
+      const charInSpeech = e.charIndex;
+      const absoluteChar = charOffset + charInSpeech;
+      
+      // Map absolute char position to span index
+      let count = 0;
+      let spanIdx = 0;
+      for (let li = 0; li < lines.length; li++) {
+        if (count + lines[li].length > absoluteChar) {
+          spanIdx = count + (absoluteChar - count);
+          break;
+        }
+        count += lines[li].length + 1;
+        spanIdx = count;
+      }
+      
+      highlightWord(Math.min(spanIdx, totalWords - 1));
+      updateProgress(spanIdx);
+    }
+  };
+
+  utt.onend = () => {
+    speaking = false;
+    paused = false;
+    setPlayState(false);
+    clearHighlight();
+    updateProgress(totalWords);
+    setStatus('朗讀完畢 ✓');
+  };
+
+  utt.onerror = (e) => {
+    if (e.error !== 'interrupted' && e.error !== 'canceled') {
+      speaking = false;
+      paused = false;
+      setPlayState(false);
+      setStatus('朗讀發生錯誤');
+    }
+  };
+
+  return utt;
+}
+
+function highlightWord(idx) {
+  // Clear previous
+  if (currentWordIndex >= 0 && currentWordIndex < wordSpans.length) {
+    wordSpans[currentWordIndex].classList.remove('speaking');
+  }
+  currentWordIndex = idx;
+  if (idx >= 0 && idx < wordSpans.length) {
+    wordSpans[idx].classList.add('speaking');
+    // Scroll into view
+    wordSpans[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+}
+
+function clearHighlight() {
+  wordSpans.forEach(s => s.classList.remove('speaking'));
+  currentWordIndex = 0;
+}
+
+function updateProgress(idx) {
+  const pct = totalWords > 0 ? Math.min((idx / totalWords) * 100, 100) : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function setStatus(msg, active = false) {
+  const el = document.getElementById('statusRow');
+  el.textContent = msg;
+  el.className = 'status-row' + (active ? ' active' : '');
+}
+
+function setPlayState(isPlaying) {
+  const btn = document.getElementById('btnPlay');
+  const icon = document.getElementById('playIcon');
+  const label = document.getElementById('playLabel');
+  if (isPlaying) {
+    btn.classList.add('playing');
+    icon.textContent = '⏸';
+    label.textContent = '暫停';
+  } else {
+    btn.classList.remove('playing');
+    icon.textContent = '▶';
+    label.textContent = paused ? '繼續' : '開始朗讀';
+  }
+}
+
+// ── Controls ──
+function togglePlay() {
+  if (!window.speechSynthesis) return;
+
+  if (speaking && !paused) {
+    // Pause
+    window.speechSynthesis.pause();
+    paused = true;
+    speaking = false;
+    setPlayState(false);
+    setStatus('已暫停');
+    return;
+  }
+
+  if (paused) {
+    // Resume
+    window.speechSynthesis.resume();
+    paused = false;
+    speaking = true;
+    setPlayState(true);
+    setStatus('朗讀中…', true);
+    return;
+  }
+
+  // Start fresh
+  startReading();
+}
+
+function startReading(fromIndex = 0) {
+  window.speechSynthesis.cancel();
+  clearHighlight();
+  
+  setTimeout(() => {
+    utterance = buildUtterance(fromIndex);
+    window.speechSynthesis.speak(utterance);
+    speaking = true;
+    paused = false;
+    setPlayState(true);
+    setStatus('朗讀中…', true);
+  }, 100);
+}
+
+function stopStory() {
+  window.speechSynthesis.cancel();
+  speaking = false;
+  paused = false;
+  setPlayState(false);
+  clearHighlight();
+  updateProgress(0);
+  setStatus('已停止');
+}
+
+function restartStory() {
+  stopStory();
+  setTimeout(() => startReading(0), 200);
+}
+
+function onSpeedChange(val) {
+  currentRate = parseFloat(val);
+  document.getElementById('speedDisplay').textContent = currentRate.toFixed(2) + '×';
+  updateActivePreset();
+
+  // If currently speaking, restart with new speed
+  if (speaking || paused) {
+    const idx = currentWordIndex;
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+      utterance = buildUtterance(idx);
+      window.speechSynthesis.speak(utterance);
+      speaking = true;
+      paused = false;
+      setPlayState(true);
+      setStatus('朗讀中…', true);
+    }, 100);
+  }
+}
+
+function setSpeed(val) {
+  currentRate = val;
+  document.getElementById('speedSlider').value = val;
+  document.getElementById('speedDisplay').textContent = val.toFixed(2) + '×';
+  updateActivePreset();
+  onSpeedChange(val);
+}
+
+function updateActivePreset() {
+  document.querySelectorAll('.speed-preset').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  const speeds = [0.7, 0.9, 1.15, 1.4];
+  const labels = document.querySelectorAll('.speed-preset');
+  speeds.forEach((s, i) => {
+    if (Math.abs(s - currentRate) < 0.05) labels[i].classList.add('active');
+  });
+}
+
+// ── Snowflakes ──
+function createSnowflakes() {
+  const flakes = ['❄', '❅', '❆', '✦', '·'];
+  for (let i = 0; i < 18; i++) {
+    const el = document.createElement('div');
+    el.className = 'snowflake';
+    el.textContent = flakes[Math.floor(Math.random() * flakes.length)];
+    el.style.left = Math.random() * 100 + 'vw';
+    el.style.fontSize = (0.6 + Math.random() * 1.2) + 'rem';
+    el.style.opacity = 0.2 + Math.random() * 0.5;
+    el.style.animationDuration = (8 + Math.random() * 14) + 's';
+    el.style.animationDelay = -(Math.random() * 20) + 's';
+    document.body.appendChild(el);
+  }
+}
+
+// Load voices (some browsers need this)
+if (window.speechSynthesis) {
+  window.speechSynthesis.onvoiceschanged = () => {};
+}
+
+// Warn if page hidden (some browsers pause TTS)
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && speaking) {
+    setStatus('視窗背景中，部分瀏覽器可能暫停語音', true);
+  }
+});
+
+init();
+</script>
+</body>
+</html>
